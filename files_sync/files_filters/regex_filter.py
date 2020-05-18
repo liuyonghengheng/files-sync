@@ -1,8 +1,9 @@
 import re
 from watchdog.utils import has_attribute, unicode_paths
+from files_sync.files_filters.files_filter import FilesFilter
 
 
-class RegexFilter(object):
+class RegexFilter(FilesFilter):
     def __init__(self, logger, regexes=[r".*"], ignore_regexes=[], ignore_directories=False, case_sensitive=False):
         if case_sensitive:
             self._regexes = [re.compile(r) for r in regexes]
@@ -16,7 +17,7 @@ class RegexFilter(object):
         self.logger.info("matching_regexes:{a}".format(a=self._ignore_regexes))
         self.logger.info("ignore_regexes:{a}".format(a=self._ignore_regexes))
 
-    def filter(self, event):
+    def event_filter(self, event):
         if self._ignore_directories and event.is_directory:
             return False
 
@@ -34,3 +35,27 @@ class RegexFilter(object):
             return True
 
         return True
+
+    def filter_paths(self, paths):
+        retain_paths = [p for p in paths if not self.is_ignore_path(p) and self.is_retain_path(p)]
+        return retain_paths
+
+    def is_ignore_path(self, path):
+        for r in self._ignore_regexes:
+            if r.match(path):
+                return True
+        return False
+
+    def is_retain_path(self, path):
+        for r in self._regexes:
+            if r.match(path):
+                return True
+        return False
+
+
+def get_filter(conf, logger):
+    return RegexFilter(logger,
+                       regexes=[conf.match_files_regexp],
+                       ignore_regexes=[conf.ignore_files_regexp],
+                       ignore_directories=False,
+                       case_sensitive=True)

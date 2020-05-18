@@ -32,8 +32,10 @@ dest_path =
 match_files_regexp = 
 # ignore files, use regexp
 ignore_files_regexp = 
+files_filter_backend = files_sync.files_filters.regex_filter
+totally_sync_when_start = False
 email_list = 
-email_subject = "files sync"
+email_subject = files sync
 send_email_sync_faild = True
 sync_retry = 0
 #send email peroid threshold,
@@ -43,7 +45,27 @@ logging_dir = /tmp
 logging_file_name = files_sync.log
 logs_rotate_when = midnight
 logs_rotate_backup_count = 7
+"""
 
+default_config_file_content_smtp = """
+[email]
+email_backend = airflow.utils.email.send_email_smtp
+
+[smtp]
+
+# If you want airflow to send emails on retries, failure, and you want to use
+# the airflow.utils.email.send_email_smtp function, you have to configure an
+# smtp server here
+smtp_host = localhost
+smtp_starttls = True
+smtp_ssl = False
+# Example: smtp_user = airflow
+# smtp_user =
+# Example: smtp_password = airflow
+# smtp_password =
+smtp_port = 25
+smtp_mail_from = airflow@example.com
+#
 """
 
 
@@ -76,6 +98,25 @@ class Configuration(object):
         except Exception as e:
             pass
         return default
+
+    def get_boolean_config(self, section, key, default=None):
+        val = str(self.get_config(section, key, default=default)).lower().strip()
+        if '#' in val:
+            val = val.split('#')[0].strip()
+        if val in ('t', 'true', '1'):
+            return True
+        elif val in ('f', 'false', '0'):
+            return False
+        else:
+            raise ValueError(
+                'The value for configuration option "{}:{}" is not a '
+                'boolean (received "{}").'.format(section, key, val))
+
+    def get_int_config(self, section, key, default=None):
+        return int(self.get_config(section, key, default=default))
+
+    def getf_loat_config(self, section, key, default=None):
+        return float(self.get_config(section, key, default=default))
 
     def get_files_sync_config(self, option, default=None):
         return self.get_config('files-sync', option, default)
@@ -182,6 +223,14 @@ class Configuration(object):
                 print("Adding Files Sync configs to config file...")
                 with open(self.config_file_path, "a") as config_file_to_append:
                     config_file_to_append.write(default_config_file_content.format(venv_command))
+                    print("Finished adding Files Sync configs to config file.")
+            else:
+                print("[files-sync] section already exists. Skipping adding Files Sync configs.")
+
+            if "[smtp]" not in config_file.read():
+                print("Adding Files Sync configs to config file...")
+                with open(self.config_file_path, "a") as config_file_to_append:
+                    config_file_to_append.write(default_config_file_content_smtp.format(venv_command))
                     print("Finished adding Files Sync configs to config file.")
             else:
                 print("[files-sync] section already exists. Skipping adding Files Sync configs.")

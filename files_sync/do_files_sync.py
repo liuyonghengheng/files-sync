@@ -3,15 +3,17 @@ import os
 import paramiko
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from importlib import import_module
+from pathlib import Path
 from files_sync.configuration import Configuration
 from files_sync.logger.logger import get_logger
 from files_sync.emailer.emailer import Emailer
-from files_sync.files_filters.regex_filter import RegexFilter
 
 
 class FilesSync(object):
-    def __init__(self, config, logger, emailer):
+    def __init__(self, config, file_filter, logger, emailer):
         self.config = config
+        self.file_filter = file_filter
         self.logger = logger
         self.emailer = emailer
         self.__sshclients = None
@@ -123,6 +125,27 @@ class FilesSync(object):
         rm_cmd = 'if [ -f "{path}" ]; then rm -rf "{path}"; fi  '.format(path=dest_path1)
         self.exec_remote_cmd(rm_cmd)
 
+    def get_all_local_files(self):
+        fps = Path(self.config.src_path)
+        for fp in fps.rglob('*'):
+            if fp.is_file() and not self.file_filter.is_ignore_path('{fp}'.format(fp=fp)) and self.file_filter.is_retain_path('{fp}'.format(fp=fp)):
+                yield '{fp}'.format(fp=fp)
+        return 'done'
+
+    def get_all_remotes_files(self):
+        pass
+
+    def do_first_sync(self):
+        if conf.get_boolean_config('files-sync', 'totally_sync_when_start', default=False):
+            for fp in self.get_all_local_files():
+                dest_path = self.get_dest_path(fp)
+                dir = os.path.dirname(dest_path)
+                print(dir)
+                mkdir_cmd = 'if [ ! -d "{path}" ]; then mkdir -p "{path}"; fi '.format(path=dir)
+                self.exec_remote_cmd(mkdir_cmd, is_close=False)
+                self.remote_cp(fp, dest_path, is_close=False)
+            self.close_sshclients()
+
 
 class FilesMonitorHandler(FileSystemEventHandler):
     def __init__(self, file_filter, files_sync, logger, *args, **kwargs):
@@ -157,10 +180,32 @@ class FilesMonitorHandler(FileSystemEventHandler):
         self.logger.debug("FileSystemEvent Deleted %s: %s" % ('directory' if event.is_directory else 'file', event.src_path))
 
     def dispatch(self, event):
-        if self.file_filter.filter(event):
+        if self.file_filter.event_filter(event):
             super(FilesMonitorHandler, self).dispatch(event)
         else:
             return
+
+
+def load_filter(conf, logger):
+    """Loads authentication backend"""
+
+    files_filter_backend = 'files_sync.files_filters.regex_filter'
+    try:
+        files_filter_backend = conf.get_files_sync_config("files_filter_backend")
+    except Exception:
+        logger.warn('files_filter_backend have no value,will use default files_filter_backend:{ffb}'.format(
+            ffb=files_filter_backend))
+    try:
+        f_filter = import_module(files_filter_backend)
+        # if issubclass(f_filter, FilesFilter):
+        if hasattr(f_filter, 'get_filter'):
+            func = getattr(f_filter, 'get_filter')
+            return func(conf, logger)
+        else:
+            logger.warn("files_filter_backend load get_filter:{f_filter} error".format(f_filter=f_filter))
+    except ImportError as err:
+        logger.critical("Cannot import %s for files_filter  due to: %s", files_filter_backend, err)
+        raise Exception(err)
 
 
 if __name__ == '__main__':
@@ -172,15 +217,12 @@ if __name__ == '__main__':
     emailer = Emailer(conf.email_list, logger, conf.alert_email_subject)
     print("match_files_regexp :" + conf.match_files_regexp)
     print("ignore_files_regexp : " + conf.ignore_files_regexp)
-    file_filter = RegexFilter(logger,
-                              regexes=[conf.match_files_regexp],
-                              ignore_regexes=[conf.ignore_files_regexp],
-                              ignore_directories=False,
-                              case_sensitive=True)
 
-    files_sync = FilesSync(conf, logger, emailer)
+    file_filter = load_filter(conf, logger)
+    files_sync = FilesSync(conf, file_filter, logger, emailer)
+    files_sync.do_first_sync()
+
     event_handler = FilesMonitorHandler(file_filter, files_sync, logger)
-
     observer = Observer()
     observer.schedule(event_handler, path=conf.src_path, recursive=True)  # recursive递归的
     observer.start()
