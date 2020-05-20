@@ -6,9 +6,11 @@
 （项目的目的是同步airflow的dags，所以现在依赖airflow的包去读取配置文件，不过这一部分后面可以改掉）
 
 #### 安装
+```
 git clone git@github.com:liuyonghengheng/files-sync.git
 cd files-sync
 pip install -e .
+```
 
 #### 使用
 
@@ -62,7 +64,9 @@ smtp_mail_from = files_sync@example.com
 ```
 
 设置环境变量：
+```
 export FILES_SYNC_CONF=/opt/files-sync/files-sync.cfg
+```
 
 启动
 
