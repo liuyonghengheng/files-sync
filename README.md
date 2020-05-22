@@ -71,3 +71,11 @@ export FILES_SYNC_CONF=/opt/files-sync/files-sync.cfg
 启动
 
 python -m files_sync.do_files_sync
+
+
+#### To Do List
+
+1.可以定义 命令前缀，比如 sudo
+
+2.可以定义 文件拥有者和权限
+
