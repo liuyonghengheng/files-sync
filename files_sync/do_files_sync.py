@@ -52,6 +52,7 @@ class FilesSync(object):
                 exec_count += 1
                 try:
                     stdin, stdout, stderr = sshclient.exec_command(cmd)
+                    break
                 except Exception as e:
                     message = "exec remote cmd:{cmd} error in {cli}, retry count:{cnt}".format(
                             cmd=cmd,
